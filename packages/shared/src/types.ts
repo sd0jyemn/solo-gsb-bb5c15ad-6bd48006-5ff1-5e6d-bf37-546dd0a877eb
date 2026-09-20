@@ -125,6 +125,18 @@ export interface DiffRowSummary {
   line: number | null;
 }
 
+/**
+ * 错位对齐：候选图案整体循环平移量（视觉坐标，绝不随偶数行镜像）。
+ * 正 dr 表示候选内容向下平移（目标行 r 读取候选源行 r-dr，取模循环）；
+ * 正 dc 表示候选内容向右平移（目标列 c 读取候选源列 c-dc，取模循环）。
+ */
+export interface AlignOffset {
+  /** 行偏移（向下为正，按行数取模循环） */
+  dr: number;
+  /** 列偏移（向右为正，按行宽取模循环） */
+  dc: number;
+}
+
 export interface CompareRequest {
   text: string;
   width: number;
@@ -135,6 +147,11 @@ export interface CompareRequest {
   symbols: string[];
   /** 底色符号，默认 'A' */
   baseSymbol?: string;
+  /**
+   * 候选图案整体的循环平移量（视觉坐标）；缺省为 (0,0) 即原始对版。
+   * 平移作用于解码后的候选图案：行、列均取模循环，偶数行绝不镜像。
+   */
+  offset?: AlignOffset;
 }
 
 export interface CompareResult {
@@ -148,6 +165,40 @@ export interface CompareResult {
   comparableRows: number;
   /** 候选口令的解析问题（与 decodeText 同一套规则） */
   issues: DecodeIssue[];
+  /** 本次比较实际使用的循环平移量（未指定时为 0,0） */
+  offset: AlignOffset;
+}
+
+/** 错位对齐搜索请求：在对版参数上追加用户限定的最大偏移 */
+export interface AlignSearchRequest extends CompareRequest {
+  /**
+   * 用户限定的最大偏移：行、列方向各自枚举 [-maxShift, +maxShift]
+   * 的全部整数偏移（含 0,0 原始位置），按差异格总数选优。
+   */
+  maxShift: number;
+}
+
+/** 一个参与决胜的偏移方案 */
+export interface AlignCandidate {
+  dr: number;
+  dc: number;
+  /** 该偏移下的差异格总数（仅统计可比较行） */
+  diffs: number;
+}
+
+export interface AlignSearchResult {
+  /** 本次搜索使用的最大偏移（规范化后，≥ 0 的整数） */
+  maxShift: number;
+  /** 参与评分的可比较候选行数（针数错误/缺失行不参与评分） */
+  scoredRows: number;
+  /** 实际枚举的偏移数量 = (2·maxShift+1)² */
+  evaluated: number;
+  /** 原始位置（偏移 0,0）的差异格总数 */
+  originalDiffs: number;
+  /** 最佳方案（同分时按固定顺序决胜，结果确定） */
+  best: AlignCandidate;
+  /** 最佳方案是否严格优于原始位置 */
+  improved: boolean;
 }
 
 /**

@@ -1041,6 +1041,107 @@ button.diff-item:hover {
   box-shadow: inset 0 0 0 2px var(--diff-replaced);
 }
 
+/* ---------- 错位对齐 ---------- */
+.align-box {
+  margin: 10px 12px 0;
+  padding: 8px 10px;
+  border: 1px solid #bcd3f7;
+  border-radius: 8px;
+  background: #f4f8ff;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.align-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.align-title {
+  font-weight: 700;
+  color: var(--primary-dark);
+  font-size: 12.5px;
+}
+
+.align-max {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.align-max input {
+  width: 52px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  background: #fff;
+}
+
+.align-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  font-size: 12.5px;
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+.align-stats strong {
+  color: var(--primary-dark);
+}
+
+.align-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.align-note {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.align-toggle {
+  align-self: flex-start;
+  padding: 5px 12px;
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.align-toggle:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+.align-toggle.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.align-toggle.active:hover {
+  background: var(--primary-dark);
+}
+
+/* 图例中的“最佳对齐预览中”提示 */
+.align-active-note {
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
 .app-footer {
   margin-top: 18px;
   text-align: center;

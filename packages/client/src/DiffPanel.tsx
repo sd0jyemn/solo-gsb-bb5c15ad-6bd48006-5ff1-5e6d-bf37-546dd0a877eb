@@ -1,8 +1,23 @@
-import type { CompareResult, DiffCell, DiffRowSummary } from '@jacquard/shared';
+import type {
+  AlignSearchResult,
+  CompareResult,
+  DiffCell,
+  DiffRowSummary,
+} from '@jacquard/shared';
+import { ALIGN_MAX_SHIFT_LIMIT } from '@jacquard/shared';
 
 interface DiffPanelProps {
   /** 对版结果（随候选口令 / 当前网格实时重算） */
   result: CompareResult;
+  /** 错位对齐搜索结果（随候选口令 / 当前网格 / 最大偏移实时重算） */
+  align: AlignSearchResult;
+  /** 用户限定的最大偏移（行、列方向 ±maxShift） */
+  maxShift: number;
+  onMaxShiftChange: (value: number) => void;
+  /** 是否正在预览最佳对齐 */
+  alignActive: boolean;
+  /** 一键切换最佳对齐预览 */
+  onToggleAlign: () => void;
   /** 当前定位选中的差异格 */
   selected: DiffCell | null;
   /** 点击行条目：定位该行首个差异 */
@@ -13,6 +28,17 @@ interface DiffPanelProps {
   onEditCommand: () => void;
   /** 候选口令是否为空（空时给出引导） */
   hasCandidateText: boolean;
+}
+
+/** 偏移量带符号显示：+2 / 0 / -1 */
+function formatOffset(n: number): string {
+  return n > 0 ? `+${n}` : String(n);
+}
+
+/** 最大偏移输入钳制到 [0, ALIGN_MAX_SHIFT_LIMIT] 的整数 */
+function clampMaxShift(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(ALIGN_MAX_SHIFT_LIMIT, Math.trunc(value)));
 }
 
 /** 单条行汇总 */
@@ -81,9 +107,16 @@ function RowEntry({
  * 对版侧栏：按行汇总新增/缺失/替换数量，点击条目定位首个差异。
  * 差异列恒为视觉坐标，不随偶数行镜像；不可比较行（针数错误 /
  * 无法解析 / 无候选）不参与差异。
+ * 错位对齐区块：显示原始与最佳差异数及最佳偏移，支持一键切换
+ * 最佳对齐预览；针数错误/缺失行不参与评分。
  */
 export default function DiffPanel({
   result,
+  align,
+  maxShift,
+  onMaxShiftChange,
+  alignActive,
+  onToggleAlign,
   selected,
   onSelect,
   onClear,
@@ -112,7 +145,60 @@ export default function DiffPanel({
         <em className="diff-count replaced">替换 {totals.replaced}</em>
         <span className="diff-meta">
           {comparableRows} 行可比较 · {diffRows} 行有差异
+          {alignActive && ' · 最佳对齐预览中'}
         </span>
+      </div>
+
+      <div className="align-box">
+        <div className="align-head">
+          <span className="align-title">错位对齐</span>
+          <label className="align-max">
+            最大偏移
+            <input
+              type="number"
+              min={0}
+              max={ALIGN_MAX_SHIFT_LIMIT}
+              value={maxShift}
+              onChange={(e) =>
+                onMaxShiftChange(clampMaxShift(Number(e.target.value)))
+              }
+            />
+          </label>
+        </div>
+        {align.scoredRows === 0 ? (
+          <div className="align-note">
+            没有可比较的候选行（针数错误或缺失行不参与评分），无法搜索错位对齐。
+          </div>
+        ) : (
+          <>
+            <div className="align-stats">
+              <span>
+                原始差异 <strong>{align.originalDiffs}</strong> 格
+              </span>
+              <span>
+                最佳差异 <strong>{align.best.diffs}</strong> 格（行{' '}
+                {formatOffset(align.best.dr)} · 列 {formatOffset(align.best.dc)}
+                ）
+              </span>
+            </div>
+            <div className="align-meta">
+              {align.scoredRows} 行参与评分 · 枚举 {align.evaluated} 种循环平移
+            </div>
+            {align.improved ? (
+              <button
+                type="button"
+                className={`align-toggle${alignActive ? ' active' : ''}`}
+                onClick={onToggleAlign}
+              >
+                {alignActive ? '返回原始对版' : '预览最佳对齐'}
+              </button>
+            ) : (
+              <div className="align-note">
+                最佳对齐即原始位置（偏移 0,0），无需平移。
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {!hasCandidateText && (

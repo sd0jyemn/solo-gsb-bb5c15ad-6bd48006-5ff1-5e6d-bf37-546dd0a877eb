@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DecodeIssue, DiffCell, FloatSpan } from '@jacquard/shared';
 import {
+  ALIGN_MAX_SHIFT_DEFAULT,
   MAX_FLOAT_DEFAULT,
   MAX_FLOAT_MAX,
   MAX_FLOAT_MIN,
   checkFloats,
   compareCandidate,
   findMinRepeatUnit,
+  searchBestAlignment,
 } from '@jacquard/shared';
 import { api } from './api.js';
 import GridEditor from './GridEditor.js';
@@ -29,6 +31,11 @@ function makeGrid(width: number, height: number, fill = 'A'): string[][] {
 
 /** 对版页网格为只读，绘制回调为空操作 */
 function noopPaint() {}
+
+/** 偏移量带符号显示：+2 / 0 / -1 */
+function formatOffset(n: number): string {
+  return n > 0 ? `+${n}` : String(n);
+}
 
 /** 示例提花图案：交错菱形 */
 function makeSample(width: number, height: number): string[][] {
@@ -70,9 +77,37 @@ export default function App() {
   const [selectedFloat, setSelectedFloat] = useState<FloatSpan | null>(null);
 
   /**
+   * 错位对齐搜索：把可比较的候选图案按视觉坐标在行、列方向循环平移，
+   * 枚举 [−maxShift, +maxShift] 内全部偏移，按差异格总数选优；
+   * 针数错误/缺失行不参与评分。纯函数实时重算——候选文本、当前网格、
+   * 行宽/行数、最大偏移任一变化即重新搜索。
+   */
+  const [maxShift, setMaxShift] = useState(ALIGN_MAX_SHIFT_DEFAULT);
+  const alignResult = useMemo(
+    () =>
+      searchBestAlignment({
+        text: commandText,
+        width,
+        height,
+        grid,
+        symbols: SYMBOLS,
+        maxShift,
+      }),
+    [commandText, width, height, grid, maxShift],
+  );
+
+  /** 是否正在预览最佳对齐（用户开启且最佳为非零偏移） */
+  const [showAligned, setShowAligned] = useState(false);
+  const alignActive =
+    showAligned &&
+    alignResult.scoredRows > 0 &&
+    (alignResult.best.dr !== 0 || alignResult.best.dc !== 0);
+
+  /**
    * 对版模式：候选口令（口令编辑区文本）→ 临时图案，与当前网格逐格比较。
    * 纯函数实时重算——候选文本、当前网格、行宽/行数任一变化即重新对版；
    * 只读比较，绝不回写网格；差异列恒为视觉坐标，不随偶数行镜像。
+   * 开启最佳对齐预览时，候选图案整体按最佳偏移循环平移后再比较。
    */
   const compareResult = useMemo(
     () =>
@@ -82,8 +117,11 @@ export default function App() {
         height,
         grid,
         symbols: SYMBOLS,
+        offset: alignActive
+          ? { dr: alignResult.best.dr, dc: alignResult.best.dc }
+          : undefined,
       }),
-    [commandText, width, height, grid],
+    [commandText, width, height, grid, alignActive, alignResult],
   );
 
   /** 对版状态是否被一键清除（清除后候选/网格再变化时自动恢复实时对版） */
@@ -104,6 +142,7 @@ export default function App() {
   const clearCompare = useCallback(() => {
     setCompareCleared(true);
     setSelectedDiff(null);
+    setShowAligned(false);
   }, []);
 
   /**
@@ -518,10 +557,22 @@ export default function App() {
                   <span className="legend-item">
                     角标为候选符号；差异列为视觉坐标，偶数行不镜像
                   </span>
+                  {alignActive && (
+                    <span className="legend-item align-active-note">
+                      最佳对齐预览中：候选整体循环平移 行{' '}
+                      {formatOffset(alignResult.best.dr)} · 列{' '}
+                      {formatOffset(alignResult.best.dc)}
+                    </span>
+                  )}
                 </div>
               </div>
               <DiffPanel
                 result={compareResult}
+                align={alignResult}
+                maxShift={maxShift}
+                onMaxShiftChange={setMaxShift}
+                alignActive={alignActive}
+                onToggleAlign={() => setShowAligned((v) => !v)}
                 selected={selectedDiff}
                 onSelect={setSelectedDiff}
                 onClear={clearCompare}
