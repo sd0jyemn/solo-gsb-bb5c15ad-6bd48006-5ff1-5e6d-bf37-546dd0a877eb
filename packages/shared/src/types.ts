@@ -125,6 +125,19 @@ export interface DiffRowSummary {
   line: number | null;
 }
 
+/**
+ * 错位对齐的循环平移量（视觉坐标）：
+ * - dr > 0 表示候选图案整体向下循环平移 dr 行（负值向上）；
+ * - dc > 0 表示候选图案整体向右循环平移 dc 列（负值向左）。
+ * 平移只改变候选图案参与比较的相位，网格本身不动，也绝不镜像。
+ */
+export interface AlignOffset {
+  /** 行方向循环平移量（视觉坐标，向下为正） */
+  dr: number;
+  /** 列方向循环平移量（视觉坐标，向右为正） */
+  dc: number;
+}
+
 export interface CompareRequest {
   text: string;
   width: number;
@@ -135,6 +148,11 @@ export interface CompareRequest {
   symbols: string[];
   /** 底色符号，默认 'A' */
   baseSymbol?: string;
+  /**
+   * 可选：比较前对候选图案施加的循环平移（错位对齐预览）。
+   * 缺省或 (0,0) 表示原始对齐；平移在视觉坐标上进行，偶数行不镜像。
+   */
+  offset?: AlignOffset;
 }
 
 export interface CompareResult {
@@ -197,4 +215,48 @@ export interface RepeatResult {
   totalCells: number;
   /** 压缩比 = totalCells / unitArea（≥ 1） */
   ratio: number;
+}
+
+/** 错位对齐搜索请求 */
+export interface AlignSearchRequest {
+  text: string;
+  width: number;
+  height: number;
+  /** 当前网格：仅作对照基准，绝不回写 */
+  grid: string[][];
+  /** 允许的符号集合（如 ['A','B','C']） */
+  symbols: string[];
+  /**
+   * 用户限定的最大偏移：行、列方向各自枚举 [-maxShift, +maxShift]，
+   * 含零偏移（原始对齐）。负数按 0 处理。
+   */
+  maxShift: number;
+  /** 底色符号，默认 'A'（与对版一致，仅用于网格缺格兜底） */
+  baseSymbol?: string;
+}
+
+/** 一个参与评分的对齐方案：循环平移量 + 该偏移下的差异格总数 */
+export interface AlignCandidate extends AlignOffset {
+  /** 该偏移下可比较行产生的差异格总数 */
+  diffs: number;
+}
+
+/**
+ * 错位对齐搜索结果。
+ * 评分只统计可比较行（候选口令针数恰好等于行宽的行）；
+ * 针数错误或缺失的候选行在任何偏移下都不参与评分。
+ */
+export interface AlignSearchResult {
+  /** 本次搜索使用的最大偏移 */
+  maxShift: number;
+  /** 参与评分的可比较候选行数（针数合法的行） */
+  comparableRows: number;
+  /** 原始对齐（零偏移）的差异格总数 */
+  originalDiffs: number;
+  /**
+   * 最佳方案：差异格总数最小；同分时依次按
+   * 曼哈顿距离 → 行偏移绝对值 → 列偏移绝对值 → 带符号行偏移 → 带符号列偏移
+   * 稳定决胜（升序）。
+   */
+  best: AlignCandidate;
 }

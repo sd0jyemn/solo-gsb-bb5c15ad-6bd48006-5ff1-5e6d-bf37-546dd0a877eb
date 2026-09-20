@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DecodeIssue, DiffCell, FloatSpan } from '@jacquard/shared';
 import {
+  ALIGN_SHIFT_DEFAULT,
   MAX_FLOAT_DEFAULT,
   MAX_FLOAT_MAX,
   MAX_FLOAT_MIN,
   checkFloats,
   compareCandidate,
   findMinRepeatUnit,
+  searchBestAlignment,
 } from '@jacquard/shared';
 import { api } from './api.js';
 import GridEditor from './GridEditor.js';
@@ -70,9 +72,35 @@ export default function App() {
   const [selectedFloat, setSelectedFloat] = useState<FloatSpan | null>(null);
 
   /**
+   * 错位对齐搜索：把可比较的候选图案按视觉坐标循环平移，
+   * 枚举 [-maxShift, +maxShift] 内的行/列偏移，按差异格总数选出最佳方案。
+   * 纯函数实时重算——候选文本、当前网格、行宽/行数、最大偏移任一变化即重新搜索；
+   * 针数错误或缺失的候选行不参与评分。
+   */
+  const [maxShift, setMaxShift] = useState(ALIGN_SHIFT_DEFAULT);
+  const alignResult = useMemo(
+    () =>
+      searchBestAlignment({
+        text: commandText,
+        width,
+        height,
+        grid,
+        symbols: SYMBOLS,
+        maxShift,
+      }),
+    [commandText, width, height, grid, maxShift],
+  );
+
+  /** 是否按最佳偏移预览对版（一键切换；零偏移时等价于原始对齐） */
+  const [alignPreview, setAlignPreview] = useState(false);
+  const previewDr = alignPreview ? alignResult.best.dr : 0;
+  const previewDc = alignPreview ? alignResult.best.dc : 0;
+
+  /**
    * 对版模式：候选口令（口令编辑区文本）→ 临时图案，与当前网格逐格比较。
    * 纯函数实时重算——候选文本、当前网格、行宽/行数任一变化即重新对版；
    * 只读比较，绝不回写网格；差异列恒为视觉坐标，不随偶数行镜像。
+   * 开启最佳对齐预览时，候选图案先按最佳偏移循环平移再比较。
    */
   const compareResult = useMemo(
     () =>
@@ -82,8 +110,9 @@ export default function App() {
         height,
         grid,
         symbols: SYMBOLS,
+        offset: { dr: previewDr, dc: previewDc },
       }),
-    [commandText, width, height, grid],
+    [commandText, width, height, grid, previewDr, previewDc],
   );
 
   /** 对版状态是否被一键清除（清除后候选/网格再变化时自动恢复实时对版） */
@@ -489,6 +518,21 @@ export default function App() {
           ) : (
             <div className="compare-layout">
               <div className="compare-grid">
+                {alignPreview &&
+                  (alignResult.best.dr !== 0 || alignResult.best.dc !== 0) && (
+                    <div className="align-preview-note">
+                      错位对齐预览中：候选图案整体循环平移 行{' '}
+                      {alignResult.best.dr > 0
+                        ? `+${alignResult.best.dr}`
+                        : alignResult.best.dr}{' '}
+                      / 列{' '}
+                      {alignResult.best.dc > 0
+                        ? `+${alignResult.best.dc}`
+                        : alignResult.best.dc}
+                      ——差异 {alignResult.best.diffs} 格（原始{' '}
+                      {alignResult.originalDiffs} 格）；网格本身未被修改。
+                    </div>
+                  )}
                 <GridEditor
                   width={width}
                   height={height}
@@ -522,6 +566,11 @@ export default function App() {
               </div>
               <DiffPanel
                 result={compareResult}
+                align={alignResult}
+                maxShift={maxShift}
+                onMaxShiftChange={setMaxShift}
+                alignPreview={alignPreview}
+                onToggleAlignPreview={() => setAlignPreview((v) => !v)}
                 selected={selectedDiff}
                 onSelect={setSelectedDiff}
                 onClear={clearCompare}

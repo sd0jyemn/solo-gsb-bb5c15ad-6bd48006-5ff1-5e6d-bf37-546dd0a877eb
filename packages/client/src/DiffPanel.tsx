@@ -1,8 +1,23 @@
-import type { CompareResult, DiffCell, DiffRowSummary } from '@jacquard/shared';
+import type {
+  AlignSearchResult,
+  CompareResult,
+  DiffCell,
+  DiffRowSummary,
+} from '@jacquard/shared';
+import { ALIGN_SHIFT_MAX, ALIGN_SHIFT_MIN } from '@jacquard/shared';
 
 interface DiffPanelProps {
-  /** 对版结果（随候选口令 / 当前网格实时重算） */
+  /** 对版结果（随候选口令 / 当前网格实时重算；预览开启时为平移后结果） */
   result: CompareResult;
+  /** 错位对齐搜索结果（原始/最佳差异数与最佳偏移） */
+  align: AlignSearchResult;
+  /** 用户限定的最大偏移（行、列方向相同） */
+  maxShift: number;
+  onMaxShiftChange: (maxShift: number) => void;
+  /** 是否正在按最佳偏移预览对版 */
+  alignPreview: boolean;
+  /** 一键切换最佳对齐预览 */
+  onToggleAlignPreview: () => void;
   /** 当前定位选中的差异格 */
   selected: DiffCell | null;
   /** 点击行条目：定位该行首个差异 */
@@ -13,6 +28,17 @@ interface DiffPanelProps {
   onEditCommand: () => void;
   /** 候选口令是否为空（空时给出引导） */
   hasCandidateText: boolean;
+}
+
+/** 带符号偏移展示：+2 / -1 / 0 */
+function fmtOffset(n: number): string {
+  return n > 0 ? `+${n}` : String(n);
+}
+
+/** 最大偏移输入收敛到允许范围 */
+function clampShift(value: number): number {
+  if (!Number.isFinite(value)) return ALIGN_SHIFT_MIN;
+  return Math.max(ALIGN_SHIFT_MIN, Math.min(ALIGN_SHIFT_MAX, Math.trunc(value)));
 }
 
 /** 单条行汇总 */
@@ -84,6 +110,11 @@ function RowEntry({
  */
 export default function DiffPanel({
   result,
+  align,
+  maxShift,
+  onMaxShiftChange,
+  alignPreview,
+  onToggleAlignPreview,
   selected,
   onSelect,
   onClear,
@@ -96,6 +127,19 @@ export default function DiffPanel({
   const mappingIssues = issues.filter(
     (i) => i.code === 'DUPLICATE_ROW' || i.code === 'ROW_OUT_OF_RANGE',
   );
+
+  /** 最佳偏移非零且有可比较行时才值得开启预览；预览中始终允许退出 */
+  const canPreview =
+    align.comparableRows > 0 &&
+    (align.best.dr !== 0 || align.best.dc !== 0);
+  const previewDisabled = !alignPreview && !canPreview;
+  const previewTitle = alignPreview
+    ? '退出最佳对齐预览，恢复原始对齐比较'
+    : canPreview
+      ? '按最佳偏移循环平移候选图案后重新比较（只读，不回写网格）'
+      : align.comparableRows === 0
+        ? '没有可比较的候选行，无法预览'
+        : '最佳对齐即原始对齐（零偏移），无需预览';
 
   return (
     <aside className="diff-panel" aria-label="对版结果">
@@ -112,7 +156,50 @@ export default function DiffPanel({
         <em className="diff-count replaced">替换 {totals.replaced}</em>
         <span className="diff-meta">
           {comparableRows} 行可比较 · {diffRows} 行有差异
+          {alignPreview && ' · 最佳对齐预览中'}
         </span>
+      </div>
+
+      <div className="align-box" aria-label="错位对齐搜索">
+        <div className="align-head">
+          <span className="align-title">错位对齐</span>
+          <label className="align-max">
+            最大偏移
+            <input
+              type="number"
+              min={ALIGN_SHIFT_MIN}
+              max={ALIGN_SHIFT_MAX}
+              value={maxShift}
+              onChange={(e) => onMaxShiftChange(clampShift(Number(e.target.value)))}
+            />
+          </label>
+        </div>
+        <div className="align-stats">
+          <span>
+            原始差异 <strong>{align.originalDiffs}</strong> 格
+          </span>
+          <span>
+            最佳 <strong>{align.best.diffs}</strong> 格（行偏移{' '}
+            {fmtOffset(align.best.dr)}，列偏移 {fmtOffset(align.best.dc)}）
+          </span>
+        </div>
+        {align.best.diffs < align.originalDiffs && (
+          <div className="align-gain">
+            对齐后可减少 {align.originalDiffs - align.best.diffs} 格差异
+          </div>
+        )}
+        {align.comparableRows === 0 && (
+          <div className="align-note">没有可比较的候选行，未参与评分</div>
+        )}
+        <button
+          type="button"
+          className={`align-toggle${alignPreview ? ' active' : ''}`}
+          disabled={previewDisabled}
+          title={previewTitle}
+          onClick={onToggleAlignPreview}
+        >
+          {alignPreview ? '退出最佳对齐预览' : '预览最佳对齐'}
+        </button>
       </div>
 
       {!hasCandidateText && (
